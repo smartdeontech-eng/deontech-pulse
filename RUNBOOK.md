@@ -96,12 +96,37 @@ last 30 seconds. It is public and read-only and shows no data.
 
 ## 4. Updating Pulse
 
+**The source** is `~/deontech-pulse` on the MacBook (gideonadjei account), a git
+repository whose online copy is **github.com/smartdeontech-eng/deontech-pulse**
+(private). Set up 18 Nov 2026 from Pulse 0.1.14 exactly as it runs on the server.
+Every change is made here, committed and pushed, then released — never edited on
+the server, or the next release undoes it. The folder lives on local disk, not
+OneDrive (SQLite fails on synced folders); OneDrive keeps only a copy
+(`Projects/Software/DeonTech Pulse/deontech-pulse-0.1.14`, the 18 Nov snapshot).
+
+Every release, in this order:
+
 ```bash
-# Mac
-bash scripts/pack.sh && scp dist/deontech-pulse-$(node -p "require('./package.json').version").tgz deploy@track.pcg-aotc.com:/tmp/
-# Server
-cd /tmp && sudo rm -rf deontech-pulse && tar xzf deontech-pulse-*.tgz && sudo bash deontech-pulse/deploy/release.sh /tmp/deontech-pulse
+# 1. Mac: change the code, bump the version (four places, see below), test
+cd ~/deontech-pulse
+tar xzf vendor/node_modules.tgz          # once, so the tests can run
+npm test
+
+# 2. Mac: commit and push, so GitHub always holds what is released
+git add -A && git commit -m "0.1.x: what changed" && git push
+
+# 3. Mac: build the tarball and copy it up
+bash scripts/pack.sh && scp dist/deontech-pulse-$(node -p "require('./package.json').version").tgz deontech-vps:/tmp/
+
+# 4. Server: install it (keeps the previous one, rolls back by itself)
+ssh -t deontech-vps "cd /tmp && sudo rm -rf deontech-pulse && tar xzf deontech-pulse-*.tgz && sudo bash deontech-pulse/deploy/release.sh /tmp/deontech-pulse"
 ```
+
+Run these from `~/deontech-pulse`. Each app has its own release script; running
+`deploy/push.sh` from another app's folder releases THAT app (17 Nov 2026: a
+Pulse/AOTC release run from the RondoQ folder released RondoQ).
+
+`deontech-vps` is the Mac's SSH alias for `deploy@track.pcg-aotc.com`.
 
 `release.sh` keeps the previous version in `/opt/pulse.prev`, restarts, and
 **rolls back by itself** if `/healthz` doesn't answer within 25 s. Manual
