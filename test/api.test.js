@@ -98,6 +98,10 @@ test('the trusted list needs a fresh 2FA code, and changing it raises an alert',
   assert.ok(monitor.alerts.list().some((a) => /Trusted list changed/.test(a.title)));
   const bad = await call('/api/trusted', { method: 'POST', body: { kind: 'key', value: 'not-a-fingerprint', code: totp.totp(SECRET) }, cookie: c });
   assert.strictEqual(bad.status, 400);
+  // 0.1.15: a phone's lower-case "sha256:" (or the whole ssh-keygen line) is accepted; the rest keeps its case.
+  const lc = await call('/api/trusted', { method: 'POST', body: { kind: 'key', label: 'MacBook', value: '256 sha256:V73esbQxsr2PsjoddRU0Z9xWfEOvY0xISt8n9TePB4E MacBook gideonadjei (ED25519)', code: totp.totp(SECRET) }, cookie: c });
+  assert.strictEqual(lc.status, 200);
+  assert.strictEqual(db.sql.get('SELECT value FROM trusted_sources WHERE id = ?', lc.json.id).value, 'SHA256:V73esbQxsr2PsjoddRU0Z9xWfEOvY0xISt8n9TePB4E');
 });
 
 test('push buttons: signed links work without a session; tampered ones do not', async () => {

@@ -15,6 +15,9 @@
 
 ## Version history kept here
 
+- **Next release (not yet versioned)** — Access → Add trusted source accepts a
+  key fingerprint typed as `sha256:…` (phones lower-case it) or the whole
+  `ssh-keygen -lf` line. Add it to the About notes when the version is bumped.
 - **0.1.15 (18 Nov 2026)** — Backups: RondoQ plan (runs `rondoq-backup.service`,
   copies its new dump + uploads, off-site left to RondoQ's encrypted copy, read
   from `/var/backups/rondoq/offsite-status`); PostgreSQL plan (all clusters,

@@ -382,6 +382,9 @@ function createApi({ monitor, channels, secret, actions, backups }) {
     const { kind, label, value, days } = req.body || {};
     if (!['key', 'network'].includes(kind)) return res.status(400).json({ error: 'kind must be key or network.' });
     let v = String(value || '').trim();
+    // A phone may lower-case the prefix or add spaces; the part after it is
+    // case-sensitive and kept exactly. A whole ssh-keygen -lf line works too.
+    if (kind === 'key') { const m = v.match(/sha256:\s*([A-Za-z0-9+/=]+)/i); if (m) v = `SHA256:${m[1]}`; }
     if (kind === 'key' && !/^SHA256:[A-Za-z0-9+/=]{20,}$/.test(v)) return res.status(400).json({ error: 'A key is its fingerprint, like SHA256:abc… (ssh-keygen -lf ~/.ssh/id_ed25519.pub).' });
     if (kind === 'network') {
       const c = trust.parseCidr(v);
