@@ -1,0 +1,53 @@
+== meta
+ts	1791518055
+host	ssdnodes-65e4d2d73d70c
+kernel	6.8.0-146-generic
+uptime	283020.11
+== ports
+3306	127.0.0.1	mysqld	995	mysql.service
+53	127.0.0.53%lo	systemd-resolve	544	systemd-resolved.service
+1434	127.0.0.1	sqlservr	2972	mssql-server.service
+1433	127.0.0.1	sqlservr	2972	mssql-server.service
+1431	127.0.0.1	sqlservr	2972	mssql-server.service
+33060	127.0.0.1	mysqld	995	mysql.service
+22	0.0.0.0	sshd	2383	ssh.service
+5000	127.0.0.1	dotnet	4201	pledge.service
+3102	*	node	86235	ifaima-green.service
+3101	*	node	86946	ifaima-blue.service
+3100	*	node	767	ginasangel.service
+3011	*	node	96748	aotc-track@blue.service
+3001	*	node	783	smart-deontech.service
+443	*	apache2	96822	apache2.service
+80	*	apache2	96822	apache2.service
+22	[::]	sshd	2383	ssh.service
+1434	[::1]	sqlservr	2972	mssql-server.service
+== users
+root	0	/root	/bin/bash	yes
+pduodu	1000	/home/pduodu	/bin/bash	yes
+deon	1001	/home/deon	/bin/bash	yes
+mssql	999	/var/opt/mssql	/bin/bash	no
+deploy	1002	/home/deploy	/bin/bash	yes
+postgres	110	/var/lib/postgresql	/bin/bash	no
+== keys
+deploy	/home/deploy/.ssh/authorized_keys	SHA256:X2tY9YuOanjDRtQ/mNbIleOleGfZLJt0qZew+N2rePk	ED25519	smartdeontech@Gideons-MacBook-Pro	1789000000
+== cron
+smshazard	3f1a9c0d2b7e	*/5 * * * * bash /opt/smshazard/run.sh >/dev/null 2>&1
+cron.d/aotc-offsite	9b2c4e6f8a10	30 3 * * * root /opt/aotc-track/deploy/offsite.sh
+cron.d/certbot	1c3e5a7b9d2f	0 */12 * * * root test -x /usr/bin/certbot && perl -e 'sleep int(rand(43200))' && certbot -q renew
+== backups
+/var/backups/aotc-track	1791512407.0	data-before-blue-20261009-022007.tar.gz	40	2306867
+/var/backups/ifaima	1791513002.0	ifaima-files-20261009-023002.tar.gz	12	4718592
+== datadirs
+/var/lib/mysql	324009984
+/var/lib/smshazard	16777216
+/var/lib/ifaima	3774873
+/var/opt/mssql	1288490188
+/opt/*.tar.gz	3195000000
+== security
+reboot_required	no
+upgradable	0
+upgradable_security	0
+fail2ban_banned	3
+sshd_password_auth	no
+sshd_root_login	prohibit-password
+ufw	inactive

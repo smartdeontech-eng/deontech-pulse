@@ -1,0 +1,14 @@
+[Unit]
+Description=DeonTech Pulse: refresh the DB-IP country file
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pulse
+Group=pulse
+ExecStart=/opt/pulse/scripts/geoip-update.sh /var/lib/pulse/dbip-country-lite.csv
+ProtectSystem=strict
+ReadWritePaths=/var/lib/pulse
+PrivateTmp=yes
+NoNewPrivileges=yes

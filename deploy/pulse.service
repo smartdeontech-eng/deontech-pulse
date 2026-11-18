@@ -1,0 +1,40 @@
+# DeonTech Pulse — web app, collector, watchers and alerts.
+# Runs as the unprivileged `pulse` user: no sudo, no access to other apps' data.
+# It can read the journal (systemd-journal) and /var/log/auth.log + Apache logs (adm).
+[Unit]
+Description=DeonTech Pulse (server monitor)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pulse
+Group=pulse
+SupplementaryGroups=adm systemd-journal
+WorkingDirectory=/opt/pulse
+EnvironmentFile=/etc/pulse.env
+Environment=NODE_ENV=production TZ=Africa/Accra
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning server.js
+Restart=always
+RestartSec=5
+MemoryMax=600M
+
+# Hardening. Pulse writes only to /var/lib/pulse.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/pulse
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

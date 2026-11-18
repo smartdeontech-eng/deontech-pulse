@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the DeonTech Pulse inventory scan hourly
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+RandomizedDelaySec=2min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

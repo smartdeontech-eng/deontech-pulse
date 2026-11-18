@@ -1,0 +1,15 @@
+# Root, because restarting an app, switching its live line and backing up its
+# data need root. It can do only what scripts/pulse-action.sh allows: restart an
+# app's own service, run aotc-track/ifaima's root-owned switch.sh, or run
+# scripts/pulse-backup.sh for an app it has a plan for. Audit those scripts.
+[Unit]
+Description=DeonTech Pulse actions (restart an app, switch a line, back up)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/pulse/scripts/pulse-action.sh
+TimeoutStartSec=40min
+PrivateTmp=yes
+ProtectHome=read-only
+# rclone (as deploy) may refresh its OneDrive token while copying a backup off-site.
+ReadWritePaths=-/home/deploy/.config/rclone

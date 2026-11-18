@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>DeonTech Pulse</title>
+  <meta name="description" content="Private live monitor for the Smart DeonTech server.">
+  <meta name="theme-color" content="#f7f7f5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111110" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Pulse">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/icon-180.png">
+  <link rel="stylesheet" href="/vendor/uPlot.min.css">
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/vendor/glass/glass.css">
+</head>
+<body>
+  <div id="app" aria-live="polite">
+    <div class="boot"><div class="boot-mark" aria-hidden="true"></div><p>DeonTech Pulse</p></div>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/vendor/uPlot.iife.min.js"></script>
+  <script src="/app.js"></script>
+  <!-- The shared look (@deontech/glass): Pulse draws its own tab bar (nav.tabbar, links, "on")
+       and uses native <dialog>s, which become sheets on a phone. -->
+  <script src="/vendor/glass/glass.js" data-tabbar="nav.tabbar" data-tabs="a" data-active="on" defer></script>
+</body>
+</html>

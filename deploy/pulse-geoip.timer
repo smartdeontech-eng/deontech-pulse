@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh the DeonTech Pulse GeoIP file monthly
+
+[Timer]
+OnCalendar=*-*-03 04:20:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

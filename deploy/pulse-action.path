@@ -1,0 +1,11 @@
+# Wakes pulse-action.service when Pulse drops a request (Restart / Switch line,
+# each confirmed in Pulse with a fresh 2FA code). See scripts/pulse-action.sh.
+[Unit]
+Description=DeonTech Pulse action requests
+
+[Path]
+PathExistsGlob=/var/lib/pulse/actions/*.req
+MakeDirectory=no
+
+[Install]
+WantedBy=multi-user.target

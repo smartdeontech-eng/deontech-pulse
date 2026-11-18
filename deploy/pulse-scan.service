@@ -1,0 +1,21 @@
+# The hourly inventory scan. Root, because only root can see which process owns
+# each port and read every user's authorized_keys and crontab. Read-only: it
+# writes one file, /var/lib/pulse-scan/inventory.txt (a root-owned folder the
+# pulse user can read but not write). Audit scripts/pulse-scan.sh.
+[Unit]
+Description=DeonTech Pulse inventory scan (read-only)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/pulse/scripts/pulse-scan.sh /var/lib/pulse-scan/inventory.txt
+Nice=10
+IOSchedulingClass=idle
+ProtectSystem=strict
+ReadWritePaths=/var/lib/pulse-scan
+ProtectHome=read-only
+PrivateDevices=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+TimeoutStartSec=5min

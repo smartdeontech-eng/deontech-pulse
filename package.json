@@ -1,0 +1,39 @@
+{
+  "name": "deontech-pulse",
+  "version": "0.1.14",
+  "released": "2026-11-16",
+  "private": true,
+  "description": "DeonTech Pulse — private live monitor for the Smart DeonTech VPS and every app on it, on the Smart DeonTech core.",
+  "main": "server.js",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "create-owner": "node scripts/create-owner.js",
+    "set-password": "node scripts/set-password.js",
+    "vapid-keys": "node scripts/vapid-keys.js",
+    "deps:freeze": "node scripts/vendor-deps.js",
+    "deps:restore": "rm -rf node_modules && tar xzf vendor/node_modules.tgz",
+    "deps:check": "node scripts/vendor-deps.js --check"
+  },
+  "dependencies": {
+    "@deontech/auth": "file:vendor/deontech-auth-0.5.1.tgz",
+    "@deontech/config": "file:vendor/deontech-config-0.5.1.tgz",
+    "@deontech/db": "file:vendor/deontech-db-0.5.1.tgz",
+    "@deontech/identity": "file:vendor/deontech-identity-0.5.1.tgz",
+    "@deontech/notify": "file:vendor/deontech-notify-0.5.1.tgz",
+    "@simplewebauthn/server": "^13.3.2",
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
+    "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^9.0.3",
+    "qrcode": "^1.5.4",
+    "systeminformation": "5.33.15",
+    "web-push": "3.6.7"
+  },
+  "devDependencies": {}
+}
