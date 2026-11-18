@@ -163,6 +163,20 @@ stores that login in `/etc/pulse-mssql.cnf` (root 0600). Run it again after
 adding a database. Then Backups → SQL Server → Back up now (tick Copy to
 OneDrive), or switch on its nightly backup.
 
+### RondoQ and PostgreSQL backups (0.1.15)
+
+- **RondoQ** — Back up now / Every night by Pulse start RondoQ's own
+  `rondoq-backup.service` (the same checked dump + uploads it makes at 02:45),
+  then copy the new files to `/var/backups/pulse/rondoq`. Off-site stays
+  RondoQ's own, **encrypted** (the Off-site switch has no effect). That needs
+  RondoQ's key once: `sudo bash /opt/rondoq/live/deploy/offsite-key.sh` — keep
+  the printed key somewhere safe outside the server.
+- **PostgreSQL** — every database in every running cluster, dumped with that
+  cluster's own `pg_dump` and read back with `pg_restore --list`. The `rondoq`
+  database is skipped (it has its own plan, so RondoQ's records never go
+  off-site unencrypted).
+- Copies holding RondoQ's records (both plans) are kept no longer than 30 days.
+
 ## 5. Everyday checks
 
 | What | Command |

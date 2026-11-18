@@ -332,6 +332,10 @@ const KNOWN = {
   mysql: { name: 'MySQL' },
   'mssql-server': { name: 'SQL Server' },
   postgresql: { name: 'PostgreSQL' },
+  // Pulse itself, found through its own Apache site (0.1.15). Its service is one
+  // of Pulse's own units, so before 0.1.15 the site became an app of its own
+  // named after the site ("Monitor"), beside the Backups page's "DeonTech Pulse".
+  pulse: { name: 'DeonTech Pulse', health: ['/healthz'] },
 };
 
 // The port a person means when they say "the database is up".
@@ -377,7 +381,7 @@ function nameMatch(domains, ...idLists) {
   return best ? best.id : null;
 }
 
-function buildApps({ scan, units = [], details = {}, sites = [], live = {}, overrides = {} }) {
+function buildApps({ scan, units = [], details = {}, sites = [], live = {}, overrides = {}, selfPort = Number(process.env.PORT) || 3201 }) {
   const apps = new Map();
   const ensure = (id, seed = {}) => {
     if (!apps.has(id)) apps.set(id, { id, name: (KNOWN[id] && KNOWN[id].name) || id, kind: 'app', units: [], lines: [], ports: [], domains: [], certFiles: [], liveLine: null, healthPaths: (KNOWN[id] && KNOWN[id].health) || null, backups: null, ...seed });
@@ -441,7 +445,9 @@ function buildApps({ scan, units = [], details = {}, sites = [], live = {}, over
     const domains = [h.serverName, ...h.aliases].filter(Boolean);
     const backPorts = [...new Set(h.proxies.map((p) => p.port))];
     let owner = null;
-    for (const port of backPorts) if (portOwner.has(port)) { owner = portOwner.get(port); break; }
+    // Pulse's own site (its backend is Pulse's port): that is Pulse, one app.
+    if (backPorts.includes(selfPort)) owner = 'pulse';
+    for (const port of backPorts) if (!owner && portOwner.has(port)) { owner = portOwner.get(port); break; }
     if (!owner && backPorts.length) {
       // Is it one of the colour lines of a known app (the idle one may not be listening)?
       owner = [...apps.values()].find((a) => a.lines.some((l) => backPorts.includes(l.port)))?.id || null;
@@ -632,6 +638,9 @@ function diffInventories(prev, next, kinds = null) {
       // postgresql@15-main etc. were cards of their own before 0.1.14; now they are
       // part of one PostgreSQL card.
       if (kind === 'app' && DB_INSTANCE_RE.test(k)) continue;
+      // The release that first names Pulse's own site "pulse": the old name for
+      // the same site (e.g. "monitor") is not an app disappearing.
+      if (kind === 'app' && b.app.has('pulse') && !a.app.has('pulse') && b.site && a.site && [...a.site].every((x) => b.site.has(x))) continue;
       changes.push(change(kind, 'removed', k));
     }
   }

@@ -20,12 +20,14 @@ const PLANS = {
   pman: { folder: 'Pman', method: 'mysql', includes: ['MySQL database pmandb (full dump)'] },
   mysql: { folder: 'Databases', method: 'mysql', includes: ['Every MySQL database except the system ones (pcgaotdb, pledgedb, pmandb …)'] },
   'mssql-server': { folder: 'SQL-Server', method: 'mssql', includes: ['Every SQL Server user database (HangfireDb, the Pledges app\u2019s job queue, and any added later)', 'Written by SQL Server itself WITH CHECKSUM (every page checked) and COPY_ONLY'] },
+  rondoq: { folder: 'RondoQ', method: 'rondoq', offsiteBy: 'app', maxDays: 30, includes: ["Runs RondoQ's own checked backup (rondoq-backup.service): its database dump, read back before it counts, and its uploads", "Off-site: RondoQ's own ENCRYPTED copy to OneDrive \u2192 RondoQ/Backups, once its key exists (sudo bash /opt/rondoq/bin/offsite-key.sh). Pulse never sends RondoQ's records off-site itself", 'Copies kept no longer than 30 days (RondoQ erases deleted organisations within 60 days)'] },
+  postgresql: { folder: 'PostgreSQL', method: 'postgres', maxDays: 30, includes: ['Every PostgreSQL database in every running cluster (pg_dump), each read back before it counts', "Except databases an app backs up itself: RondoQ's (its plan, encrypted off-site)", 'Copies kept no longer than 30 days'] },
   pulse: { folder: 'DeonTech-Pulse', method: 'files', includes: ['Pulse\u2019s database (safe snapshot, checked): readings, alerts, sign-ins, trusted list, logins', 'settings.json', 'Not its secrets (/etc/pulse.env) — those never leave the server'] },
 };
-// Things Pulse knows it cannot back up, and why.
+// Things Pulse knows it cannot back up (or back up off-site), and why.
 const NOTES = {
   'mssql-server': 'Needs a SQL Server login for backups, once: on the server run  sudo bash /opt/pulse/scripts/set-mssql-login.sh  (it asks for the sa password once and stores only a backup-only login).',
-  postgresql: 'PostgreSQL is installed but not running, so there is nothing to back up.',
+  rondoq: "Off-site copies are RondoQ's own and encrypted: they start once RondoQ's key exists (on the server: sudo bash /opt/rondoq/bin/offsite-key.sh). The Off-site switch has no effect for RondoQ.",
 };
 
 const ROLE_LABEL = {

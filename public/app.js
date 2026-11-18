@@ -9,9 +9,10 @@
 // This copy of Pulse. Kept equal to package.json (npm test checks, and the
 // service worker's cache name too); when the server runs a newer one, Pulse
 // says so and offers to reload into it.
-const APP_VERSION = '0.1.14';
+const APP_VERSION = '0.1.15';
 // Every update, newest first, as the About page shows it.
 const CHANGES = [
+  ['0.1.15', 'Backups: RondoQ can be backed up from Pulse like the other apps (Back up now and the nightly run start RondoQ\u2019s own checked backup; its off-site copies stay RondoQ\u2019s own, encrypted). PostgreSQL has a plan too: every database in every running cluster, each read back before it counts, RondoQ\u2019s left to its own plan. Copies holding RondoQ\u2019s records are kept no longer than 30 days. Pulse shows once: its own site was being listed as a second app beside “DeonTech Pulse”.'],
   ['0.1.14', 'Blue/green apps: right after a release Pulse checks the new live line at once (its port is read from the service), and never reports the stopped idle line as the app being down. PostgreSQL is one card, checked on its main port, instead of a card per cluster plus Ubuntu’s wrapper service that always looked down.'],
   ['0.1.13', 'The More sheet has a close button, and you can drag it like in Find My: up to make it tall, down to make it short, further down to close it. Backups: Pulse backs itself up (its database and settings, never its secrets), and SQL Server can be backed up and copied off-site once it has a backup login. On Backups, the nightly time and its Save button no longer sit on top of each other on a phone.'],
   ['0.1.12', 'Opens straight away from the copy on your phone, like Budget, then checks the server: a newer Pulse downloads with the bar at the top and offers Reload. Ubuntu’s own services (ldconfig, snapd and the like) are no longer listed as apps. Budget can now report its sign-ins to Pulse.'],
@@ -1927,7 +1928,7 @@ function backupCard(b, d) {
   const off = b.offsite.nightly
     ? h('div', { class: 'bk-off ok' }, h('span', { class: 'bk-dot b-off' }), h('div', null, h('b', null, 'Off-site every night'), h('span', null, `OneDrive (${(b.offsite.nightly.remotes || []).join(' ')}) → ${b.offsite.nightly.folder}/Backups${b.offsite.nightly.cron && b.offsite.nightly.cron[0] ? ` · cron ${b.offsite.nightly.cron[0].schedule}` : ''}${b.offsite.nightly.lastRun ? ` · last ran ${fmt.ago(b.offsite.nightly.lastRun)}` : ''}`)))
     : b.offsite.pulse
-      ? h('div', { class: 'bk-off ok' }, h('span', { class: 'bk-dot b-off' }), h('div', null, h('b', null, 'Copied off-site by Pulse'), h('span', null, `${fmt.ago(b.offsite.pulse.ts)} to ${b.offsite.pulse.remotes.join(' ')}`)))
+      ? h('div', { class: 'bk-off ok' }, h('span', { class: 'bk-dot b-off' }), h('div', null, h('b', null, plan && plan.offsiteBy === 'app' ? `Copied off-site by ${b.name} (encrypted)` : 'Copied off-site by Pulse'), h('span', null, `${fmt.ago(b.offsite.pulse.ts)} to ${b.offsite.pulse.remotes.join(' ')}`)))
       : h('div', { class: 'bk-off none' }, h('span', { class: 'bk-dot b-none' }), h('div', null, h('b', null, 'No off-site copy'), h('span', null, plan ? 'Back up now with “Copy to OneDrive” ticked, or switch on the nightly backup below.' : 'Nothing copies this off the server.')));
 
   const hist = b.history.length ? h('details', { class: 'bk-hist' }, h('summary', null, `Pulse backups (${b.history.length})`),
@@ -1945,9 +1946,9 @@ function backupCard(b, d) {
     sources,
     off,
     plan ? h('details', { class: 'bk-plan' }, h('summary', null, 'What “Back up now” includes'), h('ul', null, plan.includes.map((x) => h('li', null, x))),
-      h('p', { class: 'tiny muted' }, `Kept on the server in /var/backups/pulse/${b.id} (newest 14, readable by root only)${plan.folder ? `; off-site to OneDrive → ${plan.folder}/Backups` : ''}. Every backup is checked before it counts.`)) : null,
+      h('p', { class: 'tiny muted' }, `Kept on the server in /var/backups/pulse/${b.id} (newest 14${plan.maxDays ? `, at most ${plan.maxDays} days` : ''}, readable by root only)${plan.offsiteBy === 'app' ? `; off-site by ${b.name} itself, encrypted, to OneDrive → ${plan.folder}/Backups` : plan.folder ? `; off-site to OneDrive → ${plan.folder}/Backups` : ''}. Every backup is checked before it counts.`)) : null,
     b.note ? h('p', { class: 'small muted', style: { margin: 0 } }, b.note) : null,
-    plan && d.canManage ? h('div', { class: 'bk-actions' }, runBtn, h('label', { class: 'check small' }, offBox, 'Copy to OneDrive too')) : null,
+    plan && d.canManage ? h('div', { class: 'bk-actions' }, runBtn, plan.offsiteBy === 'app' ? null : h('label', { class: 'check small' }, offBox, 'Copy to OneDrive too')) : null,
     nightly,
     hist);
 }

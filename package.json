@@ -1,7 +1,7 @@
 {
   "name": "deontech-pulse",
-  "version": "0.1.14",
-  "released": "2026-11-16",
+  "version": "0.1.15",
+  "released": "2026-11-18",
   "private": true,
   "description": "DeonTech Pulse — private live monitor for the Smart DeonTech VPS and every app on it, on the Smart DeonTech core.",
   "main": "server.js",

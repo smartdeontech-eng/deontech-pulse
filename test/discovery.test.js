@@ -177,3 +177,21 @@ test('the old per-cluster cards going away is not "Gone app"', () => {
   const next = { scan: midScan, units: pgUnits, sites: [], apps: [{ id: 'postgresql' }] };
   assert.deepStrictEqual(d.diffInventories(prev, next).filter((c) => c.kind === 'app'), []);
 });
+
+test('0.1.15: Pulse\'s own site is one app, "DeonTech Pulse", not a second app named after the site', () => {
+  const [site] = d.parseApacheSite('<VirtualHost *:443>\n ServerName monitor.smartdeontech.com\n ProxyPass / http://127.0.0.1:3201/\n ProxyPassReverse / http://127.0.0.1:3201/\n</VirtualHost>', '/etc/apache2/sites-enabled/monitor.smartdeontech.com-le-ssl.conf');
+  const scan = { ports: [{ port: 3201, addr: '127.0.0.1', addrs: ['127.0.0.1'], unit: 'pulse.service' }] };
+  const units = [{ unit: 'pulse.service', base: 'pulse', load: 'loaded', active: 'active', sub: 'running' }];
+  const apps = d.buildApps({ scan, units, sites: [site], live: {}, selfPort: 3201 });
+  const mine = apps.filter((a) => a.domains.includes('monitor.smartdeontech.com'));
+  assert.deepStrictEqual(mine.map((a) => [a.id, a.name]), [['pulse', 'DeonTech Pulse']]);
+  assert.ok(!apps.some((a) => a.id === 'monitor'));
+  // The Backups page then shows it once.
+  const { createBackups } = require('../core/backups');
+  const b = createBackups({ monitor: { state: { apps } }, actions: {}, db: null, getSettings: () => ({ thresholds: {} }), updateSettings: () => {}, manifestDir: '/nonexistent' });
+  assert.deepStrictEqual(b.list().filter((x) => /pulse/i.test(x.name)).map((x) => x.name), ['DeonTech Pulse']);
+  // The switch from the old name is not "an app disappeared".
+  const prev = { scan, units, sites: [site], apps: [{ id: 'monitor' }] };
+  const next = { scan, units, sites: [site], apps: [{ id: 'pulse' }] };
+  assert.deepStrictEqual(d.diffInventories(prev, next, ['app']).filter((c) => c.change === 'removed' || c.type === 'removed'), []);
+});

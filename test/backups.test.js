@@ -279,3 +279,104 @@ esac
   assert.match(calls, /WITH COPY_ONLY, CHECKSUM, INIT/);
   assert.deepStrictEqual(fs.readdirSync(data), [], 'nothing left in SQL Server’s folder');
 });
+
+// ---- 0.1.15: RondoQ (its own backup, its own encrypted off-site) and PostgreSQL ----
+function pgSandbox() {
+  const s = sandbox();
+  const bin = path.join(s.d, 'bin2');
+  fs.mkdirSync(bin, { recursive: true });
+  const w = (f, body) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, body); fs.chmodSync(f, 0o755); };
+  const rq = path.join(s.fsroot, 'var/backups/rondoq');
+  // RondoQ's backup.sh, as rondoq-backup.service runs it: a dump (here a file
+  // pg_restore accepts), uploads, and its off-site status when the key "exists".
+  w(path.join(bin, 'systemctl'), `#!/bin/bash
+[ "$2" = rondoq-backup.service ] || exit 5
+[ -n "$RQ_FAIL_ALL" ] && { echo "pg_dump: connection refused" >&2; exit 1; }
+mkdir -p ${rq}; st=$(date -u +%Y%m%d-%H%M%S%N)
+echo "PGDMP good" > ${rq}/rondoq-$st-nightly.dump
+echo hi > ${s.d}/u; gzip -c ${s.d}/u > ${rq}/uploads-$st.tgz
+case "$RQ_OFFSITE" in ok) echo "ok 2026-11-18T02:45:00Z 2 file(s) to onedrive: minutes:" > ${rq}/offsite-status ;; failed) echo "FAILED 2026-11-18T02:45:00Z" > ${rq}/offsite-status; exit 1 ;; esac
+exit 0
+`);
+  w(path.join(bin, 'pg_restore'), '#!/bin/bash\n[ "$1" = --list ] || exit 2\ngrep -q PGDMP "$2"\n');
+  w(path.join(bin, 'pg_lsclusters'), "#!/bin/bash\nprintf '15  main    5432 online postgres /var/lib/postgresql/15/main /var/log/x\\n16  main    5433 online postgres /var/lib/postgresql/16/main /var/log/y\\n14  old     5434 down   postgres /x /y\\n'\n");
+  const pgbin = path.join(s.d, 'pgbin');
+  for (const v of ['15', '16']) {
+    w(path.join(pgbin, v, 'bin/psql'), `#!/bin/bash\n${v === '15' ? "printf 'rondoq\\nbudget\\n'" : 'exit 0'}\n`);
+    w(path.join(pgbin, v, 'bin/pg_dump'), '#!/bin/bash\nfor a; do db=$a; done\n[ "$db" = rondoq ] && { echo "should not be dumped here" >&2; exit 9; }\necho "PGDMP $db"\n');
+  }
+  const extra = { PULSE_BACKUP_SYSTEMCTL: path.join(bin, 'systemctl'), PULSE_BACKUP_PG_RESTORE: path.join(bin, 'pg_restore'), PULSE_BACKUP_PG_LSCLUSTERS: path.join(bin, 'pg_lsclusters'),
+    PULSE_BACKUP_PG_BIN: pgbin, PULSE_BACKUP_AS_POSTGRES: 'env' };
+  return { ...s, rq, run2: (app, off, id, more = {}) => s.run(app, off, id, { ...extra, ...more }) };
+}
+
+test('rondoq plan: runs RondoQ\'s own backup, checks the dump, records RondoQ\'s encrypted off-site copy, never sends its own', () => {
+  const s = pgSandbox();
+  let r = s.run2('rondoq', '1', 'rq0001', { RQ_OFFSITE: 'ok' });
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  let rec = s.record('rondoq');
+  assert.strictEqual(rec.ok, true);
+  assert.ok(rec.checks.some((c) => /ran RondoQ's own backup/.test(c)));
+  assert.ok(rec.checks.some((c) => /database dump reads back/.test(c)));
+  assert.ok(rec.checks.some((c) => /uploads archive opens/.test(c)));
+  assert.deepStrictEqual(rec.offsite.map((o) => [o.remote, o.ok, o.by, o.encrypted]), [['onedrive:', true, 'rondoq', true], ['minutes:', true, 'rondoq', true]]);
+  assert.ok(!fs.existsSync(path.join(s.remote, 'onedrive')), 'Pulse sent nothing of RondoQ off-site itself');
+  const list = execFileSync('tar', ['-tzf', rec.file], { encoding: 'utf8' });
+  assert.match(list, /rondoq\/rondoq-.*-nightly\.dump/);
+
+  // Off-site failed: the local backup still counts, the failure is recorded.
+  r = s.run2('rondoq', '1', 'rq0002', { RQ_OFFSITE: 'failed' });
+  rec = s.record('rondoq');
+  assert.strictEqual(rec.ok, true, r.stdout);
+  assert.strictEqual(rec.offsite[0].ok, false);
+  assert.match(rec.offsite[0].error, /journalctl -u rondoq-backup/);
+
+  // No key yet: no off-site entry, and the output says how to make one.
+  r = s.run2('rondoq', '1', 'rq0003', {});
+  assert.match(r.stdout, /offsite-key\.sh/);
+  assert.deepStrictEqual(s.record('rondoq').offsite, []);
+
+  // RondoQ's backup itself failed: the run fails with its reason.
+  r = s.run2('rondoq', '0', 'rq0004', { RQ_FAIL_ALL: '1' });
+  assert.strictEqual(r.status, 1);
+  assert.match(s.record('rondoq').error, /rondoq-backup\.service failed/);
+});
+
+test('rondoq and postgresql copies are never kept longer than 30 days', () => {
+  const s = pgSandbox();
+  const dir = path.join(s.fsroot, 'var/backups/pulse/rondoq');
+  fs.mkdirSync(dir, { recursive: true });
+  const old = path.join(dir, 'rondoq-20260901-000000-old.tar.gz');
+  fs.writeFileSync(old, 'x');
+  const t = Date.now() / 1000 - 40 * 86400;
+  fs.utimesSync(old, t, t);
+  const r = s.run2('rondoq', '0', 'rq0010', {});
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.ok(!fs.existsSync(old), 'a 40-day-old copy is removed');
+});
+
+test('postgresql plan: every database in every running cluster, read back; RondoQ left to its own plan; off-site like MySQL', () => {
+  const s = pgSandbox();
+  const r = s.run2('postgresql', '1', 'pg0001');
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  const rec = s.record('postgresql');
+  assert.strictEqual(rec.ok, true);
+  assert.ok(rec.checks.some((c) => /15\/main budget: dump reads back/.test(c)));
+  assert.ok(rec.checks.some((c) => /16\/main \(port 5433\): no databases of its own/.test(c)));
+  assert.ok(rec.checks.some((c) => /left to their app's own plan: rondoq/.test(c)));
+  assert.match(r.stdout, /cluster 14\/old is down \(skipped\)/);
+  const list = execFileSync('tar', ['-tzf', rec.file], { encoding: 'utf8' });
+  assert.match(list, /postgresql\/15-main-budget\.dump/);
+  assert.ok(!/rondoq\.dump/.test(list));
+  assert.deepStrictEqual(rec.offsite.map((o) => o.ok), [true, true]);
+  assert.ok(fs.existsSync(path.join(s.remote, 'onedrive', 'PostgreSQL', 'Backups', path.basename(rec.file))));
+});
+
+test('the page: RondoQ and PostgreSQL have plans; RondoQ\'s off-site is its own', () => {
+  const { PLANS, NOTES } = require('../core/backups');
+  assert.strictEqual(PLANS.rondoq.offsiteBy, 'app');
+  assert.strictEqual(PLANS.rondoq.maxDays, 30);
+  assert.ok(PLANS.postgresql);
+  assert.match(NOTES.rondoq, /offsite-key\.sh/);
+  assert.ok(!NOTES.postgresql, 'the old "not running" note is gone');
+});

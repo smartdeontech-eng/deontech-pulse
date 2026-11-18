@@ -15,6 +15,12 @@
 
 ## Version history kept here
 
+- **0.1.15 (18 Nov 2026)** — Backups: RondoQ plan (runs `rondoq-backup.service`,
+  copies its new dump + uploads, off-site left to RondoQ's encrypted copy, read
+  from `/var/backups/rondoq/offsite-status`); PostgreSQL plan (all clusters,
+  `rondoq` DB skipped); 30-day limit on copies with RondoQ data. Pulse's own
+  Apache site (backend port 3201) is now the app `pulse` ("DeonTech Pulse")
+  instead of a second card named after the site.
 - **0.1.14 (16 Nov 2026)** — blue/green apps: a line's port is read from its
   service (`Environment=PORT`, `systemctl show`, no root), so the new live line is
   checked straight after a release and the stopped idle line is never reported

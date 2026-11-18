@@ -8,7 +8,7 @@
  *    action link, so "Yes, it was me" works from the lock screen. */
 // Equal to package.json's version (npm test checks), so every release changes
 // this file — which is how a phone notices there is a new Pulse to fetch.
-const VERSION = 'pulse-0.1.14';
+const VERSION = 'pulse-0.1.15';
 const SHELL = ['/', '/index.html', '/app.css', '/app.js', '/vendor/uPlot.iife.min.js', '/vendor/uPlot.min.css', '/vendor/glass/glass.css', '/vendor/glass/glass.js', '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/badge-96.png'];
 
 // Tell the open app how far an update has got (downloading 4 of 12 →

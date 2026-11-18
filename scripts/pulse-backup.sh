@@ -19,6 +19,19 @@
 #                   (root-only; made by scripts/set-mssql-login.sh)
 #   pulse           Pulse itself: /var/lib/pulse (its database snapshotted,
 #                   settings). Not /etc/pulse.env: secrets never leave the server.
+#   rondoq          runs RondoQ's own checked backup (rondoq-backup.service:
+#                   database dump read back with pg_restore, uploads, and its
+#                   ENCRYPTED off-site copy once RondoQ's key exists). Pulse
+#                   keeps a local copy and records RondoQ's off-site result; it
+#                   never sends RondoQ's data off-site itself (owner, 16 Nov:
+#                   RondoQ's off-site copies are encrypted).
+#   postgresql      every PostgreSQL database in every running cluster
+#                   (pg_dump, custom format, read back with pg_restore --list),
+#                   except those an app plan covers (rondoq). Off-site like MySQL.
+#
+# RondoQ deletes a closed organisation for good 30 days after deletion and its
+# nightly dumps 30 days later; Pulse's copies of RondoQ (rondoq, postgresql)
+# are therefore never kept longer than 30 days.
 #
 # SQLite databases are copied with sqlite3's online .backup (safe while the
 # app is running), then checked with PRAGMA integrity_check. MySQL dumps use
@@ -47,6 +60,12 @@ MYSQL="${PULSE_BACKUP_MYSQL:-mysql}"
 SQLCMD="${PULSE_BACKUP_SQLCMD:-}"
 MSSQL_CNF="${PULSE_BACKUP_MSSQL_CNF:-$P/etc/pulse-mssql.cnf}"
 MSSQL_DIR="${PULSE_BACKUP_MSSQL_DIR:-$P/var/opt/mssql/data}"
+RQ_BACKUPS="${PULSE_BACKUP_RONDOQ_DIR:-$P/var/backups/rondoq}"
+PG_RESTORE="${PULSE_BACKUP_PG_RESTORE:-pg_restore}"
+PG_LSCLUSTERS="${PULSE_BACKUP_PG_LSCLUSTERS:-pg_lsclusters}"
+PG_BIN="${PULSE_BACKUP_PG_BIN:-/usr/lib/postgresql}"          # <ver>/bin/pg_dump, psql
+AS_PG="${PULSE_BACKUP_AS_POSTGRES:-runuser -u postgres --}"
+PG_SKIP="${PULSE_BACKUP_PG_SKIP:-rondoq}"                      # databases an app plan covers
 SYSTEMCTL="${PULSE_BACKUP_SYSTEMCTL:-systemctl}"
 RCLONE="${PULSE_BACKUP_RCLONE:-runuser -u deploy -- rclone}"
 OFFSITE_REMOTES="${PULSE_BACKUP_REMOTES:-onedrive: minutes:}"
@@ -57,7 +76,7 @@ ROOT_UID="${PULSE_ACTION_ROOT_UID:-0}"
 [[ $RID =~ ^[a-z0-9]{1,32}$ ]] || RID=manual
 
 # ---- the plans --------------------------------------------------------------
-DIRS=(); DBS=(); METHOD=files; FOLDER=""; EXCL=()
+DIRS=(); DBS=(); METHOD=files; FOLDER=""; EXCL=(); MAX_DAYS=""; OWN_OFFSITE=0
 case "$APP" in
   aotc-track)     FOLDER=AOTC-Track;     DIRS=("$P/opt/aotc-track/data" "$P/opt/aotc-track/public/uploads" "$P/opt/aotc-track/document-files" "$P/opt/aotc-track/marriage-files" "$P/opt/aotc-track/minutes") ;;
   smart-deontech) FOLDER=Smart-DeonTech; DIRS=("$P/opt/smart-deontech/data" "$P/opt/smart-deontech/public/uploads") ;;
@@ -67,6 +86,8 @@ case "$APP" in
   pman)           FOLDER=Pman;           METHOD=mysql; DBS=(pmandb) ;;
   mysql)          FOLDER=Databases;      METHOD=mysql; DBS=(__all__) ;;
   mssql-server)   FOLDER=SQL-Server;     METHOD=mssql ;;
+  rondoq)         FOLDER=RondoQ;         METHOD=rondoq; MAX_DAYS=30; OWN_OFFSITE=1 ;;
+  postgresql)     FOLDER=PostgreSQL;     METHOD=postgres; MAX_DAYS=30 ;;
   # The country table and its cache are downloaded again by pulse-geoip.timer.
   pulse)          FOLDER=DeonTech-Pulse; DIRS=("$P/var/lib/pulse"); EXCL=(--exclude='*.csv' --exclude='*.csv.gz' --exclude='*geoip*' --exclude='*/actions') ;;
   *) echo "Pulse has no backup plan for $APP."; exit 2 ;;
@@ -184,7 +205,87 @@ backup_ifaima() {
   done
 }
 
-case "$METHOD" in files) backup_files ;; mysql) backup_mysql ;; mssql) backup_mssql ;; ifaima) backup_ifaima ;; esac
+# ---- RondoQ: its own backup ----------------------------------------------------
+# rondoq-backup.service runs RondoQ's backup.sh nightly: a pg_dump read back
+# with pg_restore --list, the uploads archive, and (once /etc/rondoq-offsite.key
+# exists) the encrypted copy to OneDrive, whose result it writes to
+# /var/backups/rondoq/offsite-status. A failed off-site copy makes the service
+# fail but leaves the local dump good, so the dump is judged on its own.
+RQ_OFF=()
+backup_rondoq() {
+  local before f rc=0 st stline n st_was
+  before="$(date +%s)"
+  st="$RQ_BACKUPS/offsite-status"
+  st_was="$(stat -c %y "$st" 2>/dev/null || echo none)"
+  # The files that were there before; only new ones are this run's.
+  local had; had="$(find "$RQ_BACKUPS" -maxdepth 1 -type f \( -name 'rondoq-*-nightly.dump' -o -name 'uploads-*.tgz' \) -printf '%f\n' 2>/dev/null)"
+  timeout 1800 "$SYSTEMCTL" start rondoq-backup.service 2>"$ERRF" || rc=$?
+  mkdir -p "$WORK/rondoq"
+  for f in $(find "$RQ_BACKUPS" -maxdepth 1 -type f \( -name 'rondoq-*-nightly.dump' -o -name 'uploads-*.tgz' \) 2>/dev/null); do
+    printf '%s\n' "$had" | grep -qxF "$(basename "$f")" && continue
+    cp -p "$f" "$WORK/rondoq/"
+  done
+  n=$(find "$WORK/rondoq" -name '*.dump' | wc -l)
+  if [ "$n" -eq 0 ]; then
+    if [ "$rc" -ne 0 ]; then fail "rondoq-backup.service failed and wrote no new database dump: $(head -c 160 "$ERRF")"
+    else fail "RondoQ's backup wrote no new database dump in $RQ_BACKUPS"; fi
+    return
+  fi
+  check "ran RondoQ's own backup (rondoq-backup.service)"
+  for f in "$WORK"/rondoq/*.dump; do
+    if "$PG_RESTORE" --list "$f" >/dev/null 2>"$ERRF"; then check "RondoQ database dump reads back: $(basename "$f") ($(du -h "$f" | cut -f1))"
+    else fail "RondoQ database dump did not read back: $(head -c 160 "$ERRF")"; fi
+  done
+  for f in "$WORK"/rondoq/uploads-*.tgz; do [ -f "$f" ] || continue
+    gzip -t "$f" 2>/dev/null && check "RondoQ uploads archive opens ($(du -h "$f" | cut -f1))" || fail "RondoQ uploads archive did not open"
+  done
+  # RondoQ's own (encrypted) off-site copy, as RondoQ recorded it.
+  if [ -f "$st" ] && [ "$(stat -c %y "$st")" != "$st_was" ]; then
+    stline="$(head -1 "$st")"
+    if [ "${stline%% *}" = ok ]; then
+      for R in $(printf '%s' "$stline" | sed -n 's/.* to //p'); do RQ_OFF+=("{\"remote\":\"$(jesc "$R")\",\"ok\":true,\"by\":\"rondoq\",\"encrypted\":true}"); done
+      check "RondoQ sent its encrypted off-site copy ($(printf '%s' "$stline" | sed -n 's/.* to //p'))"
+    else
+      RQ_OFF+=("{\"remote\":\"OneDrive\",\"ok\":false,\"by\":\"rondoq\",\"error\":\"RondoQ's encrypted off-site copy failed; see journalctl -u rondoq-backup\"}")
+      echo "  ✗ RondoQ's encrypted off-site copy failed (the local backup is fine)"
+    fi
+  else
+    echo "  · no off-site copy: RondoQ has no off-site key yet (sudo bash /opt/rondoq/bin/offsite-key.sh)"
+  fi
+}
+
+# ---- PostgreSQL ----------------------------------------------------------------
+# Every running cluster (pg_lsclusters), every database in it except the
+# templates, "postgres" and those an app plan covers ($PG_SKIP), dumped as the
+# postgres user with that cluster's own pg_dump, then read back.
+backup_postgres() {
+  local ver name port status rest dbs db f any=0 skipped=()
+  [ -n "$(command -v "${PG_LSCLUSTERS%% *}" 2>/dev/null)" ] || [ -x "${PG_LSCLUSTERS%% *}" ] || { fail "pg_lsclusters is not available"; return; }
+  mkdir -p "$WORK/postgresql"
+  while read -r ver name port status rest; do
+    [[ $ver =~ ^[0-9.]+$ ]] || continue
+    [ "$status" = online ] || { echo "  · cluster $ver/$name is $status (skipped)"; continue; }
+    mapfile -t dbs < <($AS_PG "$PG_BIN/$ver/bin/psql" -p "$port" -At -c "SELECT datname FROM pg_database WHERE NOT datistemplate AND datname <> 'postgres' ORDER BY 1" 2>"$ERRF")
+    for db in "${dbs[@]}"; do
+      [[ $db =~ ^[A-Za-z0-9_]{1,63}$ ]] || { fail "skipped a database with an odd name"; continue; }
+      if [[ " $PG_SKIP " == *" $db "* ]]; then skipped+=("$db"); continue; fi
+      f="$WORK/postgresql/$ver-$name-$db.dump"
+      if $AS_PG "$PG_BIN/$ver/bin/pg_dump" -p "$port" --format=custom --compress=6 "$db" 2>"$ERRF" > "$f" && [ -s "$f" ]; then
+        if "$PG_RESTORE" --list "$f" >/dev/null 2>&1; then any=1; check "PostgreSQL $ver/$name $db: dump reads back ($(du -h "$f" | cut -f1))"
+        else fail "PostgreSQL $db: the dump did not read back"; fi
+      else fail "PostgreSQL $db: $(head -c 200 "$ERRF")"; fi
+    done
+    [ ${#dbs[@]} -gt 0 ] || check "cluster $ver/$name (port $port): no databases of its own"
+  done < <($PG_LSCLUSTERS -h 2>/dev/null)
+  if [ ${#skipped[@]} -gt 0 ]; then
+    check "left to their app's own plan: ${skipped[*]} (RondoQ: encrypted off-site)"
+    printf 'Databases backed up by their own app plan, not here: %s\n' "${skipped[*]}" > "$WORK/postgresql/README.txt"
+  fi
+  [ "$any" = 1 ] || [ ${#skipped[@]} -gt 0 ] || [ -n "$ERR" ] || check "no PostgreSQL databases to back up"
+  [ -n "$(ls -A "$WORK/postgresql")" ] || printf 'No PostgreSQL databases needed a backup on %s.\n' "$STAMP" > "$WORK/postgresql/README.txt"
+}
+
+case "$METHOD" in files) backup_files ;; mysql) backup_mysql ;; mssql) backup_mssql ;; ifaima) backup_ifaima ;; rondoq) backup_rondoq ;; postgres) backup_postgres ;; esac
 
 # ---- one archive, proven to open ----------------------------------------------
 ARCH="$OUTDIR/$APP-$STAMP-${RID:0:6}.tar.gz"
@@ -200,8 +301,8 @@ fi
 rm -f "$ARCH.part"
 
 # ---- off-site ------------------------------------------------------------------
-OFF=()
-if [ -z "$ERR" ] && [ "$OFFSITE" = 1 ]; then
+OFF=("${RQ_OFF[@]}")
+if [ -z "$ERR" ] && [ "$OFFSITE" = 1 ] && [ "$OWN_OFFSITE" = 0 ]; then
   # The archive is root-only; rclone runs as deploy, so it gets a readable copy.
   T="$(mktemp /tmp/pulse-offsite-XXXXXX.tar.gz)"; cp "$ARCH" "$T"; chmod 0644 "$T"
   for R in $OFFSITE_REMOTES; do
@@ -216,6 +317,8 @@ fi
 
 # ---- keep the newest $KEEP -------------------------------------------------------
 ls -1t "$OUTDIR"/"$APP"-*.tar.gz 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f --
+# Copies holding RondoQ's records never outlive RondoQ's own 30-day promise.
+[ -n "$MAX_DAYS" ] && find "$OUTDIR" -maxdepth 1 -name "$APP-*.tar.gz" -mtime +"$MAX_DAYS" -delete 2>/dev/null
 
 # ---- the record Pulse reads ---------------------------------------------------------
 mkdir -p "$MAN_DIR"
