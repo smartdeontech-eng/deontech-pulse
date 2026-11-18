@@ -109,18 +109,32 @@ Every release, in this order:
 ```bash
 # 1. Mac: change the code, bump the version (four places, see below), test
 cd ~/deontech-pulse
-tar xzf vendor/node_modules.tgz          # once, so the tests can run
-npm test
+tar xzf vendor/node_modules.tgz          # once per Mac account (MODULE_NOT_FOUND = not done yet)
+npm test                                 # on the Mac ~16 Linux-only tests fail — see below
 
 # 2. Mac: commit and push, so GitHub always holds what is released
 git add -A && git commit -m "0.1.x: what changed" && git push
 
 # 3. Mac: build the tarball and copy it up
-bash scripts/pack.sh && scp dist/deontech-pulse-$(node -p "require('./package.json').version").tgz deontech-vps:/tmp/
+V=$(node -p "require('./package.json').version")
+bash scripts/pack.sh && scp dist/deontech-pulse-$V.tgz deontech-vps:/tmp/
 
-# 4. Server: install it (keeps the previous one, rolls back by itself)
-ssh -t deontech-vps "cd /tmp && sudo rm -rf deontech-pulse && tar xzf deontech-pulse-*.tgz && sudo bash deontech-pulse/deploy/release.sh /tmp/deontech-pulse"
+# 4. Server: install it (keeps the previous one, rolls back by itself).
+#    Exact file name, never deontech-pulse-*.tgz: an old tarball left in /tmp
+#    makes tar fail ("Not found in archive") — 18 Nov 2026. Old ones are removed.
+ssh -t deontech-vps "cd /tmp && sudo rm -rf deontech-pulse && find /tmp -maxdepth 1 -name 'deontech-pulse-*.tgz' ! -name 'deontech-pulse-$V.tgz' -delete; tar xzf deontech-pulse-$V.tgz && sudo bash deontech-pulse/deploy/release.sh /tmp/deontech-pulse"
+
+# 5. Check
+ssh deontech-vps "curl -s localhost:3201/healthz"     # "version" must be the new one
 ```
+
+**Tests on the Mac.** The full suite only passes on Linux. On the Mac these fail
+and that is expected, not a reason to stop: the root-helper tests (restart,
+switch, requests), every backup-plan test (files, MySQL, SQL Server, IFAIMA,
+Pulse, RondoQ, PostgreSQL, off-site, retention, refusals) — they run the bash
+scripts with GNU `stat`/`runuser`/`pg_lsclusters` — the journal-follower test
+(`journalctl`) and the `/proc` reader. Anything else failing is real. A clean
+full run needs Linux (the server, or a Linux sandbox).
 
 Run these from `~/deontech-pulse`. Each app has its own release script; running
 `deploy/push.sh` from another app's folder releases THAT app (17 Nov 2026: a
@@ -145,7 +159,30 @@ in `public/app.js`, and `VERSION` in `public/sw.js` (`pulse-<version>`). The las
 one is what makes phones notice the update. `pack.sh` writes `build.json`.
 
 Deploy from the MacBook (it carries the code, the deploy key and its
-passphrase). Phones and the iPad are for watching, logs, restarts and
+passphrase).
+
+**SSH key per Mac account (18 Nov 2026).** Each macOS account needs its own key,
+trusted in Pulse — otherwise SSH falls back to the password and every login and
+sudo is an **urgent** alert ("Login with a password, not a key"), even from a
+trusted network. Check: `ssh -v deontech-vps true 2>&1 | grep -iE "Offering|Authenticated"`
+must say `using "publickey"`. To set up an account (run each line on its own —
+pasting them together feeds the second line into ssh-keygen's file prompt):
+
+```bash
+ssh-keygen -t ed25519 -C "MacBook <account>"        # Enter at the file prompt, then a passphrase
+ssh-copy-id -i ~/.ssh/id_ed25519.pub deontech-vps   # the server password, one last time
+ssh-add --apple-use-keychain ~/.ssh/id_ed25519
+ssh-keygen -lf ~/.ssh/id_ed25519.pub                # the fingerprint for Pulse
+```
+
+`~/.ssh/config` under `Host deontech-vps`: `IdentityFile ~/.ssh/id_ed25519`,
+`UseKeychain yes`, `AddKeysToAgent yes`. Then Pulse → Access → **Add trusted
+source** → SSH key, paste the fingerprint (`SHA256:…`; since 0.1.15 a lower-case
+`sha256:` or the whole ssh-keygen line also works). The key list under "SSH keys
+on the server" only refreshes with the hourly scan. Logins then show under Access
+→ "Who got in" with the key's name, and on the Overview timeline, without alerts.
+Keys: gideonadjei account `SHA256:V73esbQxsr2PsjoddRU0Z9xWfEOvY0xISt8n9TePB4E`
+("MacBook gideonadjei"). Phones and the iPad are for watching, logs, restarts and
 rollbacks through Pulse.
 
 ### SQL Server and Pulse backups (0.1.13)
